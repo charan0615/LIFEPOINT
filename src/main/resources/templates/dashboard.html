@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LIFEPOINT · Wealth & Habit Dashboard</title>
+  <meta name="_csrf" th:content="${_csrf.token}"/>
+  <meta name="_csrf_header" th:content="${_csrf.headerName}"/>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+
+    <!-- Top Navigation Bar -->
+    <header class="navbar">
+      <div class="brand">
+        <div class="brand-icon">L</div>
+        <span>LIFEPOINT</span>
+      </div>
+
+      <!-- Live Gamification Level & XP Badge -->
+      <div class="nav-center">
+        <div class="xp-badge" id="xpBadgeContainer" title="Earn XP by completing habits, logging cashflow and reaching savings goals!">
+          <span class="level-tag" id="navLevelTag" th:text="|LEVEL ${profile.level}|">LEVEL 1</span>
+          <div class="xp-bar-container">
+            <div class="xp-bar-fill" id="navXpBarFill" th:style="|width: ${profile.levelProgressPercent}%;|"></div>
+          </div>
+          <span class="num" id="navXpText" style="font-weight: 600; font-size: 12px; color: #c7d2fe;" th:text="|${profile.xp} XP|">0 XP</span>
+        </div>
+      </div>
+
+      <div class="nav-actions">
+        <!-- Multi-Currency Selector -->
+        <form th:action="@{/currency}" method="post" class="currency-picker" id="currencyForm">
+          <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+          <label for="currencySelect" style="color: var(--text-dim); font-size: 11px; font-weight: 700;">CURRENCY</label>
+          <select id="currencySelect" name="currency" onchange="this.form.submit()">
+            <option th:each="c : ${currencies}" th:value="${c}" th:text="${c}" th:selected="${c == profile.currency}"></option>
+          </select>
+        </form>
+
+        <div class="user-profile">
+          <div class="avatar" id="userAvatar" th:text="${#strings.substring(profile.name != null ? profile.name : 'U', 0, 1)}">U</div>
+          <span style="font-weight: 600; color: var(--text);" id="userNameText" th:text="${profile.name}">User</span>
+          <form th:action="@{/logout}" method="post" style="display: inline;">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+            <button type="submit" class="btn-signout">Sign Out</button>
+          </form>
+        </div>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs Bar -->
+    <nav class="nav-tabs-bar">
+      <button type="button" class="nav-tab-item active" onclick="switchSection('overview')">
+        <span>📊</span> Dashboard Overview
+      </button>
+      <button type="button" class="nav-tab-item" onclick="switchSection('habits')">
+        <span>⚡</span> Habits & Routines
+      </button>
+      <button type="button" class="nav-tab-item" onclick="switchSection('cashflow')">
+        <span>💳</span> Cashflow & Expenses
+      </button>
+      <button type="button" class="nav-tab-item" onclick="switchSection('budgets')">
+        <span>🎯</span> Category Budgets
+      </button>
+      <button type="button" class="nav-tab-item" onclick="switchSection('goals')">
+        <span>🏦</span> Savings Vaults
+      </button>
+      <button type="button" class="nav-tab-item" onclick="switchSection('analytics')">
+        <span>📈</span> Analytics & Charts
+      </button>
+      <button type="button" class="nav-tab-item" onclick="switchSection('leaderboard')">
+        <span>🏆</span> Leaderboard & Badges
+      </button>
+    </nav>
+
+    <!-- Flash Alerts -->
+    <div th:if="${successMessage}" class="alert-banner" id="flashSuccess">
+      <span>✨</span> <span th:text="${successMessage}">Operation successful!</span>
+    </div>
+    <div th:if="${habitError}" class="alert-banner error">
+      <span>⚠️</span> <span th:text="${habitError}">Habit error</span>
+    </div>
+    <div th:if="${expenseError}" class="alert-banner error">
+      <span>⚠️</span> <span th:text="${expenseError}">Expense error</span>
+    </div>
+    <div th:if="${incomeError}" class="alert-banner error">
+      <span>⚠️</span> <span th:text="${incomeError}">Income error</span>
+    </div>
+    <div th:if="${budgetError}" class="alert-banner error">
+      <span>⚠️</span> <span th:text="${budgetError}">Budget error</span>
+    </div>
+    <div th:if="${goalError}" class="alert-banner error">
+      <span>⚠️</span> <span th:text="${goalError}">Goal error</span>
+    </div>
+
+    <!-- Hero Metrics Grid -->
+    <section class="hero-grid">
+      <!-- Metric 1: Net Cashflow -->
+      <article class="metric-card accent-emerald">
+        <div class="metric-head">
+          <span class="metric-title">Net Cashflow</span>
+          <div class="metric-icon">💰</div>
+        </div>
+        <div class="metric-value num">
+          <span class="curr-sym" th:text="${currencySymbol}">₹</span>
+          <span id="metricNetCashflow" th:text="${#numbers.formatDecimal(netCashflow, 1, 2)}">0.00</span>
+        </div>
+        <div class="metric-sub">
+          <span>In: </span><b class="num" style="color: var(--success);" id="metricTotalIncome" th:text="|${currencySymbol} ${#numbers.formatDecimal(totalIncome, 1, 0)}|">0</b>
+          <span>· Out: </span><b class="num" style="color: var(--danger);" id="metricTotalExpense" th:text="|${currencySymbol} ${#numbers.formatDecimal(totalExpense, 1, 0)}|">0</b>
+        </div>
+      </article>
+
+      <!-- Metric 2: "Saved by Choice" (Habit-to-Money Link) -->
+      <article class="metric-card accent-purple">
+        <div class="metric-head">
+          <span class="metric-title">Saved By Choice</span>
+          <div class="metric-icon">💎</div>
+        </div>
+        <div class="metric-value num" style="color: #c084fc;">
+          <span class="curr-sym" th:text="${currencySymbol}">₹</span>
+          <span id="metricSavedByHabits" th:text="${#numbers.formatDecimal(totalSavedByHabits, 1, 2)}">0.00</span>
+        </div>
+        <div class="metric-sub">
+          <span class="badge-pill badge-violet">✦ Habit ROI</span>
+          <span>Preserved via discipline</span>
+        </div>
+      </article>
+
+      <!-- Metric 3: Habit Consistency & Streak -->
+      <article class="metric-card accent-amber">
+        <div class="metric-head">
+          <span class="metric-title">Daily Habits</span>
+          <div class="metric-icon">🔥</div>
+        </div>
+        <div class="metric-value num">
+          <span id="metricHabitCounts" th:text="|${doneHabitsCount} / ${habitCount}|">0 / 0</span>
+        </div>
+        <div class="metric-sub">
+          <span class="badge-pill badge-emerald" id="metricHabitRate" th:text="|${habitCompletionRate}% Today|">0%</span>
+          <span style="color: #fb923c; font-weight: 700;" id="metricMaxStreak" th:text="|🔥 ${maxStreak}d Streak|">0d Streak</span>
+        </div>
+      </article>
+
+      <!-- Metric 4: Savings Vaults Progress -->
+      <article class="metric-card accent-cyan">
+        <div class="metric-head">
+          <span class="metric-title">Savings Vaults</span>
+          <div class="metric-icon">🏦</div>
+        </div>
+        <div class="metric-value num" style="color: var(--cyan);">
+          <span class="curr-sym" th:text="${currencySymbol}">₹</span>
+          <span id="metricSavedInGoals" th:text="${#numbers.formatDecimal(totalSavedInGoals, 1, 0)}">0</span>
+        </div>
+        <div class="metric-sub">
+          <span class="badge-pill badge-cyan" id="metricGoalsProgress" th:text="|${goalsOverallProgress}% Target|">0%</span>
+          <span id="metricActiveVaultsCount" th:text="|${#lists.size(goals)} Active Vaults|">0 Vaults</span>
+        </div>
+      </article>
+    </section>
+
+    <!-- SECTION: Overview / Analytics Charts Grid -->
+    <section class="charts-grid" id="analyticsOverviewSection">
+      <!-- Chart 1: Cashflow Trajectory -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">
+            <h3>Cashflow Trajectory</h3>
+            <p>Monthly Income vs. Monthly Expenses</p>
+          </div>
+          <span class="badge-pill badge-emerald">6-Month Trend</span>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="cashflowChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Chart 2: Category Spending Breakdown -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">
+            <h3>Monthly Spending</h3>
+            <p>Breakdown by category</p>
+          </div>
+          <span class="badge-pill badge-violet">Distribution</span>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="categoryChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Extra Charts Section (Accessible via Analytics tab) -->
+    <section class="charts-grid" id="extraChartsSection" style="display: none; margin-bottom: 24px;">
+      <!-- Chart 3: Habit Consistency -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">
+            <h3>7-Day Habit Activity</h3>
+            <p>Daily check-ins completed</p>
+          </div>
+          <span class="badge-pill badge-amber">Consistency</span>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="habitTrendsChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Chart 4: Saved By Choice Cumulative ROI -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">
+            <h3>"Saved By Choice" Growth</h3>
+            <p>Cumulative savings from positive habits</p>
+          </div>
+          <span class="badge-pill badge-cyan">Compound ROI</span>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="cumulativeSavingsChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Dual Columns -->
+    <div class="dashboard-columns">
+
+      <!-- LEFT COLUMN -->
+      <div class="col-left">
+
+        <!-- 1. HABITS & "SAVED BY CHOICE" PANEL -->
+        <section class="panel" id="panelHabits">
+          <div class="panel-header">
+            <div>
+              <h2><span>⚡</span> Daily Habits & Discipline</h2>
+              <p class="panel-subtitle">Maintain streaks, build XP, and automatically fund your goals</p>
+            </div>
+            <span class="badge-pill badge-violet" id="panelHabitsBadge" th:text="|${doneHabitsCount} of ${habitCount} Done|">0 of 0</span>
+          </div>
+
+          <!-- Add Habit Form with "Saved by Choice" Option -->
+          <form class="fintech-form" th:action="@{/habits}" method="post" id="addHabitForm">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+            <div class="form-row">
+              <div class="form-group" style="flex: 2;">
+                <label>Habit Title</label>
+                <input class="form-control" name="title" id="habitTitleInput" placeholder="e.g. Skip takeout coffee, Cook dinner, Read 20 pages" maxlength="80" required>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label>Category</label>
+                <select class="form-control" name="category" id="habitCategorySelect">
+                  <option value="Health">Health & Wellness</option>
+                  <option value="Finance">Financial Discipline</option>
+                  <option value="Productivity">Productivity</option>
+                  <option value="Fitness">Fitness</option>
+                  <option value="Mindset">Mindset & Learning</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Money-Saving Option Toggle -->
+            <div style="background: rgba(99, 102, 241, 0.06); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 12px;">
+              <label class="checkbox-label">
+                <input type="checkbox" id="moneySaverToggle" name="moneySaver" value="true" onchange="toggleMoneySaverFields()">
+                <span>💰 Is this a money-saving habit? (e.g. skip delivery, brew coffee, avoid cabs)</span>
+              </label>
+
+              <div id="moneySaverFields" class="form-row" style="display: none; margin-top: 10px;">
+                <div class="form-group">
+                  <label>Saved Amount per check-in (<span class="curr-sym" th:text="${currencySymbol}">₹</span>)</label>
+                  <input class="form-control num" name="savedAmount" id="habitSavedAmountInput" type="number" step="0.01" min="0" placeholder="e.g. 200">
+                </div>
+                <div class="form-group">
+                  <label>Auto-Deposit into Savings Goal</label>
+                  <select class="form-control" name="linkedGoalId" id="habitLinkedGoalSelect">
+                    <option value="">-- None (Keep in Total Saved) --</option>
+                    <option th:each="g : ${goals}" th:value="${g.id}" th:text="|${g.title} (${currencySymbol} ${g.currentAmount} / ${g.targetAmount})|"></option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" class="btn-primary" style="margin-top: 6px;">
+              <span>+</span> Add Habit (+10 XP)
+            </button>
+          </form>
+
+          <!-- Habits List -->
+          <div class="habit-list" id="habitsContainer">
+            <div th:if="${#lists.isEmpty(habits)}" class="empty-state">
+              <div class="empty-state-icon">🌱</div>
+              <p>No habits yet. Start small by adding one promise to yourself above.</p>
+            </div>
+
+            <article th:each="h : ${habits}" class="habit-item" th:classappend="${h.isDoneToday()} ? 'is-done' : ''" th:id="|habit-item-${h.id}|">
+              <div class="habit-info">
+                <div class="habit-details">
+                  <h4 th:text="${h.title}">Habit Title</h4>
+                  <div class="habit-meta">
+                    <span class="streak-tag">🔥 <span th:text="|${h.currentStreak}d streak|">0d streak</span></span>
+                    <span style="color: var(--text-dim);">·</span>
+                    <span th:text="${h.category}" style="color: var(--text-muted);">Personal</span>
+                    <span th:if="${h.moneySaver && h.savedAmount > 0}" class="money-saver-tag">
+                      💎 Saves <span th:text="|${currencySymbol} ${#numbers.formatDecimal(h.savedAmount, 1, 0)}|">₹0</span> / day
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="habit-actions">
+                <form th:if="${!h.isDoneToday()}" th:action="@{/habits/{id}/complete(id=${h.id})}" method="post" style="display: inline;" th:onsubmit="|completeHabitAjax(event, ${h.id}); return false;|">
+                  <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+                  <button type="submit" class="btn-complete">
+                    <span>✓</span> Mark Done
+                  </button>
+                </form>
+                <div th:if="${h.isDoneToday()}" class="btn-completed-badge">
+                  <span>✓</span> Done Today
+                </div>
+
+                <!-- Edit Habit Button -->
+                <button type="button" class="btn-icon-edit" title="Edit habit"
+                        th:data-id="${h.id}"
+                        th:data-title="${h.title}"
+                        th:data-category="${h.category}"
+                        th:data-moneysaver="${h.moneySaver}"
+                        th:data-savedamount="${h.savedAmount}"
+                        th:data-goalid="${h.linkedGoalId}"
+                        onclick="openEditHabitModal(this)">
+                  ✏️
+                </button>
+
+                <!-- Delete Habit Button -->
+                <form th:action="@{/habits/{id}/delete(id=${h.id})}" method="post" style="display: inline;" onsubmit="return confirm('Delete this habit?')">
+                  <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+                  <button type="submit" class="btn-icon-delete" title="Delete habit">🗑</button>
+                </form>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- 2. CASHFLOW FEED: QUICK LOGGING & TRANSACTIONS -->
+        <section class="panel" id="panelCashflow">
+          <div class="panel-header">
+            <div>
+              <h2><span>💳</span> Cashflow & Transactions</h2>
+              <p class="panel-subtitle">Record earnings, track expenses, and search history</p>
+            </div>
+            <div class="tab-nav" style="border: none; margin: 0; padding: 0;">
+              <button type="button" class="tab-btn active" id="tabExpenseBtn" onclick="switchTxTab('expense')">- Expense</button>
+              <button type="button" class="tab-btn" id="tabIncomeBtn" onclick="switchTxTab('income')">+ Income</button>
+            </div>
+          </div>
+
+          <!-- Expense Form -->
+          <form id="expenseForm" class="fintech-form" th:action="@{/expenses}" method="post">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+            <div class="form-row">
+              <div class="form-group" style="flex: 2;">
+                <label>Description</label>
+                <input class="form-control" name="title" placeholder="e.g. Grocery haul, Fuel, Netflix subscription" maxlength="90" required>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label>Amount (<span class="curr-sym" th:text="${currencySymbol}">₹</span>)</label>
+                <input class="form-control num" name="amount" type="number" step="0.01" min="0.01" placeholder="0.00" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Category</label>
+                <select class="form-control" name="category">
+                  <option value="Food">Food & Dining</option>
+                  <option value="Bills">Bills & Utilities</option>
+                  <option value="Shopping">Shopping</option>
+                  <option value="Travel">Travel & Commute</option>
+                  <option value="Education">Education & Books</option>
+                  <option value="Health">Health & Fitness</option>
+                  <option value="Entertainment">Entertainment</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Date</label>
+                <input class="form-control" name="spentOn" type="date">
+              </div>
+            </div>
+            <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #f43f5e, #e11d48);">
+              Record Expense (+5 XP)
+            </button>
+          </form>
+
+          <!-- Income Form (Hidden by default) -->
+          <form id="incomeForm" class="fintech-form" th:action="@{/income}" method="post" style="display: none;">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+            <div class="form-row">
+              <div class="form-group" style="flex: 2;">
+                <label>Income Source / Title</label>
+                <input class="form-control" name="title" placeholder="e.g. Monthly Salary, Freelance project, Dividend" maxlength="90" required>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label>Amount (<span class="curr-sym" th:text="${currencySymbol}">₹</span>)</label>
+                <input class="form-control num" name="amount" type="number" step="0.01" min="0.01" placeholder="0.00" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Category</label>
+                <select class="form-control" name="category">
+                  <option value="Salary">Salary</option>
+                  <option value="Freelance">Freelance / Contract</option>
+                  <option value="Business">Business Revenue</option>
+                  <option value="Investment">Investment & Dividends</option>
+                  <option value="Bonus">Bonus & Incentives</option>
+                  <option value="Other">Other Income</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Date Received</label>
+                <input class="form-control" name="receivedOn" type="date">
+              </div>
+            </div>
+            <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #10b981, #059669);">
+              Record Income (+10 XP)
+            </button>
+          </form>
+
+          <!-- Filter & Search Toolbar -->
+          <div class="tx-toolbar">
+            <input type="text" id="txSearchInput" class="tx-search-input" placeholder="🔍 Search description..." oninput="filterTransactions()">
+            <select id="txCategoryFilter" class="tx-select" onchange="filterTransactions()">
+              <option value="">All Categories</option>
+              <option value="Food">Food & Dining</option>
+              <option value="Bills">Bills & Utilities</option>
+              <option value="Shopping">Shopping</option>
+              <option value="Travel">Travel & Commute</option>
+              <option value="Education">Education</option>
+              <option value="Salary">Salary</option>
+              <option value="Freelance">Freelance</option>
+              <option value="Investment">Investment</option>
+              <option value="Other">Other</option>
+            </select>
+            <select id="txTypeFilter" class="tx-select" onchange="filterTransactions()">
+              <option value="ALL">All Types</option>
+              <option value="EXPENSE">Expenses Only</option>
+              <option value="INCOME">Incomes Only</option>
+            </select>
+          </div>
+
+          <!-- Combined Recent Activity Feed -->
+          <h4 style="font-size: 14px; font-weight: 700; color: var(--text-muted); margin: 16px 0 10px;">Transaction Feed</h4>
+          <div class="transaction-feed" id="transactionsContainer">
+            <div th:if="${#lists.isEmpty(expenses) and #lists.isEmpty(incomes)}" class="empty-state">
+              <div class="empty-state-icon">📊</div>
+              <p>No transactions recorded yet. Log an expense or income to build your cashflow history.</p>
+            </div>
+
+            <!-- Incomes -->
+            <article th:each="i : ${incomes}" class="tx-row tx-item" data-type="INCOME" th:data-title="${i.title}" th:data-category="${i.category}" th:data-date="${i.receivedOn}">
+              <div class="tx-info">
+                <div class="tx-icon" style="color: var(--success); background: rgba(16, 185, 129, 0.1);">↓</div>
+                <div class="tx-details">
+                  <b th:text="${i.title}">Salary</b>
+                  <small th:text="|${i.category} · ${i.receivedOn}|">Income · Date</small>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="tx-amount income num" th:text="|+ ${currencySymbol} ${#numbers.formatDecimal(i.amount, 1, 2)}|">+ ₹0.00</span>
+                <button type="button" class="btn-icon-edit" title="Edit income"
+                        th:data-id="${i.id}"
+                        th:data-title="${i.title}"
+                        th:data-category="${i.category}"
+                        th:data-amount="${i.amount}"
+                        th:data-date="${i.receivedOn}"
+                        onclick="openEditIncomeModal(this)">✏️</button>
+                <form th:action="@{/income/{id}/delete(id=${i.id})}" method="post">
+                  <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+                  <button type="submit" class="btn-icon-delete" title="Delete income">🗑</button>
+                </form>
+              </div>
+            </article>
+
+            <!-- Expenses -->
+            <article th:each="e : ${expenses}" class="tx-row tx-item" data-type="EXPENSE" th:data-title="${e.title}" th:data-category="${e.category}" th:data-date="${e.spentOn}">
+              <div class="tx-info">
+                <div class="tx-icon" style="color: var(--danger); background: rgba(244, 63, 94, 0.1);">↑</div>
+                <div class="tx-details">
+                  <b th:text="${e.title}">Expense Item</b>
+                  <small th:text="|${e.category} · ${e.spentOn}|">Food · Date</small>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="tx-amount expense num" th:text="|- ${currencySymbol} ${#numbers.formatDecimal(e.amount, 1, 2)}|">- ₹0.00</span>
+                <button type="button" class="btn-icon-edit" title="Edit expense"
+                        th:data-id="${e.id}"
+                        th:data-title="${e.title}"
+                        th:data-category="${e.category}"
+                        th:data-amount="${e.amount}"
+                        th:data-date="${e.spentOn}"
+                        onclick="openEditExpenseModal(this)">✏️</button>
+                <form th:action="@{/expenses/{id}/delete(id=${e.id})}" method="post">
+                  <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+                  <button type="submit" class="btn-icon-delete" title="Delete expense">🗑</button>
+                </form>
+              </div>
+            </article>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div class="col-right">
+
+        <!-- 3. MONTHLY BUDGETS -->
+        <section class="panel" id="panelBudgets">
+          <div class="panel-header">
+            <div>
+              <h2><span>🎯</span> Category Budgets</h2>
+              <p class="panel-subtitle">Monthly spending thresholds & alerts (80% Warning, Over-Limit Danger)</p>
+            </div>
+          </div>
+
+          <!-- Add / Edit Budget Form -->
+          <form class="fintech-form" th:action="@{/budgets}" method="post">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+            <div class="form-row">
+              <div class="form-group">
+                <label>Category</label>
+                <select class="form-control" name="category">
+                  <option value="Food">Food & Dining</option>
+                  <option value="Bills">Bills & Utilities</option>
+                  <option value="Shopping">Shopping</option>
+                  <option value="Travel">Travel & Commute</option>
+                  <option value="Education">Education & Books</option>
+                  <option value="Health">Health & Fitness</option>
+                  <option value="Entertainment">Entertainment</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Monthly Limit (<span class="curr-sym" th:text="${currencySymbol}">₹</span>)</label>
+                <input class="form-control num" name="monthlyLimit" type="number" step="1" min="1" placeholder="e.g. 10000" required>
+              </div>
+            </div>
+            <button type="submit" class="btn-primary" style="padding: 9px 14px; font-size: 13px;">
+              Set Category Budget
+            </button>
+          </form>
+
+          <div class="budget-grid" id="budgetGridContainer">
+            <div th:if="${#lists.isEmpty(budgetStatuses)}" class="empty-state">
+              <p>No budgets configured. Set category limits above to maintain discipline.</p>
+            </div>
+
+            <article th:each="b : ${budgetStatuses}" class="budget-card">
+              <div class="budget-card-head">
+                <span class="budget-category">
+                  <b th:text="${b.category}">Food</b>
+                  <span th:if="${b.status == 'DANGER'}" class="badge-pill" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">⚠️ OVER LIMIT</span>
+                  <span th:if="${b.status == 'WARNING'}" class="badge-pill" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24;">⚡ 80%+ USED</span>
+                  <span th:if="${b.status == 'SAFE'}" class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">✓ ON TRACK</span>
+                </span>
+                <span class="budget-amounts num">
+                  <span th:text="|${currencySymbol} ${#numbers.formatDecimal(b.spent, 1, 0)}|">0</span> /
+                  <span th:text="|${currencySymbol} ${#numbers.formatDecimal(b.monthlyLimit, 1, 0)}|">0</span>
+                </span>
+              </div>
+
+              <div class="budget-bar">
+                <div class="budget-fill"
+                     th:classappend="${b.status == 'DANGER'} ? 'danger' : (${b.status == 'WARNING'} ? 'warning' : 'safe')"
+                     th:style="|width: ${b.percentage > 100 ? 100 : b.percentage}%;|"></div>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-top: 4px;">
+                <span th:text="|${b.percentage}% spent|">0% spent</span>
+                <span th:if="${b.remaining > 0}" th:text="|${currencySymbol} ${#numbers.formatDecimal(b.remaining, 1, 0)} left|">0 left</span>
+                <span th:if="${b.remaining <= 0}" style="color: var(--danger); font-weight: 700;">Exceeded Budget</span>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- 4. SAVINGS GOALS & VAULTS -->
+        <section class="panel" id="panelGoals">
+          <div class="panel-header">
+            <div>
+              <h2><span>🏦</span> Savings Vaults</h2>
+              <p class="panel-subtitle">Target-based wealth milestones & compound growth</p>
+            </div>
+          </div>
+
+          <!-- Add Savings Goal Form -->
+          <form class="fintech-form" th:action="@{/goals}" method="post">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+            <div class="form-row">
+              <div class="form-group" style="flex: 2;">
+                <label>Goal Name</label>
+                <input class="form-control" name="title" placeholder="e.g. Emergency Fund, Japan Trip, MacBook" maxlength="80" required>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label>Target (<span class="curr-sym" th:text="${currencySymbol}">₹</span>)</label>
+                <input class="form-control num" name="targetAmount" type="number" step="100" min="100" placeholder="50000" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Target Date</label>
+                <input class="form-control" name="targetDate" type="date">
+              </div>
+              <div class="form-group">
+                <label>Category</label>
+                <select class="form-control" name="category">
+                  <option value="Emergency Fund">Emergency Fund</option>
+                  <option value="Travel">Travel & Adventure</option>
+                  <option value="Gadgets">Gadgets & Tech</option>
+                  <option value="Investment">Investment & Real Estate</option>
+                  <option value="Education">Education & Courses</option>
+                  <option value="Other">Other Milestone</option>
+                </select>
+              </div>
+            </div>
+            <button type="submit" class="btn-primary" style="padding: 9px 14px; font-size: 13px;">
+              Create Goal (+15 XP)
+            </button>
+          </form>
+
+          <!-- Goals Grid -->
+          <div class="goals-grid" id="goalsContainer">
+            <div th:if="${#lists.isEmpty(goals)}" class="empty-state">
+              <p>No savings vaults created yet. Define a target above to start compounding.</p>
+            </div>
+
+            <article th:each="g : ${goals}" class="goal-card">
+              <div class="goal-card-top">
+                <div>
+                  <h4 th:text="${g.title}">Goal Title</h4>
+                  <span class="goal-date" th:text="|Target: ${g.targetDate} · ${g.category}|">Target Date</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <button type="button" class="btn-icon-edit" title="Edit goal"
+                          th:data-id="${g.id}"
+                          th:data-title="${g.title}"
+                          th:data-target="${g.targetAmount}"
+                          th:data-date="${g.targetDate}"
+                          th:data-category="${g.category}"
+                          onclick="openEditGoalModal(this)">✏️</button>
+                  <form th:action="@{/goals/{id}/delete(id=${g.id})}" method="post" onsubmit="return confirm('Delete this savings goal?')">
+                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+                    <button type="submit" class="btn-icon-delete" title="Delete goal">🗑</button>
+                  </form>
+                </div>
+              </div>
+
+              <div class="goal-progress-bar">
+                <div class="goal-progress-fill" th:style="|width: ${g.progressPercentage}%;|"></div>
+              </div>
+
+              <div class="goal-stats-row num">
+                <b style="color: var(--cyan);" th:text="|${currencySymbol} ${#numbers.formatDecimal(g.currentAmount, 1, 0)}|">₹0</b>
+                <span style="color: var(--text-dim);" th:text="|of ${currencySymbol} ${#numbers.formatDecimal(g.targetAmount, 1, 0)} (${g.progressPercentage}%)|">of ₹0</span>
+              </div>
+
+              <!-- Quick Deposit Form -->
+              <form class="deposit-form" th:action="@{/goals/{id}/deposit(id=${g.id})}" method="post">
+                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+                <input class="form-control num" name="amount" type="number" step="10" min="1" placeholder="Amount to add" required>
+                <button type="submit" class="btn-deposit">+ Deposit</button>
+              </form>
+            </article>
+          </div>
+        </section>
+
+        <!-- 5. ACHIEVEMENTS & TROPHIES SHELF -->
+        <section class="panel" id="panelAchievements">
+          <div class="panel-header">
+            <div>
+              <h2><span>🏆</span> Achievements & Milestones</h2>
+              <p class="panel-subtitle">Unlocked badges commemorating discipline & consistency</p>
+            </div>
+            <span class="badge-pill badge-violet" th:text="|${#lists.size(achievements)} Unlocked|">0 Unlocked</span>
+          </div>
+
+          <div class="badges-shelf">
+            <div th:if="${#lists.isEmpty(achievements)}" class="empty-state">
+              <p>No achievements unlocked yet. Complete your first habit or transaction to earn a badge!</p>
+            </div>
+
+            <article th:each="a : ${achievements}" class="badge-card">
+              <div class="badge-icon-box" th:text="${a.icon}">⭐</div>
+              <div class="badge-info">
+                <h5 th:text="${a.title}">Achievement</h5>
+                <p th:text="${a.description}">Description</p>
+                <small style="color: var(--text-dim); font-size: 10px;" th:text="|Unlocked on ${a.unlockedOn}|">Date</small>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- 6. GLOBAL LEADERBOARD -->
+        <section class="panel" id="panelLeaderboard">
+          <div class="panel-header">
+            <div>
+              <h2><span>👑</span> Community Leaderboard</h2>
+              <p class="panel-subtitle">Top disciplined members ranked by XP & habit mastery</p>
+            </div>
+          </div>
+
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Member</th>
+                <th>Level</th>
+                <th>XP</th>
+                <th>Streak</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr th:each="entry : ${leaderboard}">
+                <td>
+                  <span class="rank-badge"
+                        th:classappend="${entry.rank == 1} ? 'rank-1' : (${entry.rank == 2} ? 'rank-2' : (${entry.rank == 3} ? 'rank-3' : 'rank-other'))"
+                        th:text="${entry.rank}">1</span>
+                </td>
+                <td>
+                  <b th:text="${entry.name}">User</b><br>
+                  <small style="color: var(--text-dim);" th:text="${entry.email}">user@email</small>
+                </td>
+                <td><span class="badge-pill badge-violet" th:text="|Lvl ${entry.level}|">Lvl 1</span></td>
+                <td class="num" style="font-weight: 700; color: #a5b4fc;" th:text="|${entry.xp} XP|">0 XP</td>
+                <td style="color: #fb923c; font-weight: 700;" th:text="|🔥 ${entry.maxStreak}d|">0d</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+      </div>
+    </div>
+
+    <!-- Modals Section -->
+
+    <!-- Edit Habit Modal -->
+    <div id="editHabitModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>✏️ Edit Habit</h3>
+          <button type="button" class="btn-close-modal" onclick="closeModal('editHabitModal')">✕</button>
+        </div>
+        <form id="editHabitForm" method="post" class="fintech-form">
+          <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label>Title</label>
+            <input class="form-control" name="title" id="editHabitTitle" required maxlength="80">
+          </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label>Category</label>
+            <select class="form-control" name="category" id="editHabitCategory">
+              <option value="Health">Health & Wellness</option>
+              <option value="Finance">Financial Discipline</option>
+              <option value="Productivity">Productivity</option>
+              <option value="Fitness">Fitness</option>
+              <option value="Mindset">Mindset & Learning</option>
+            </select>
+          </div>
+          <div style="background: rgba(99, 102, 241, 0.06); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+            <label class="checkbox-label">
+              <input type="checkbox" id="editMoneySaverToggle" name="moneySaver" value="true" onchange="toggleEditMoneySaver()">
+              <span>💰 Money-saving habit?</span>
+            </label>
+            <div id="editMoneySaverFields" class="form-row" style="margin-top: 10px;">
+              <div class="form-group">
+                <label>Saved Amount</label>
+                <input class="form-control num" name="savedAmount" id="editHabitSavedAmount" type="number" step="0.01" min="0">
+              </div>
+              <div class="form-group">
+                <label>Linked Savings Vault</label>
+                <select class="form-control" name="linkedGoalId" id="editHabitLinkedGoal">
+                  <option value="">-- None --</option>
+                  <option th:each="g : ${goals}" th:value="${g.id}" th:text="${g.title}"></option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="btn-primary" style="width: 100%;">Save Changes</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Edit Expense Modal -->
+    <div id="editExpenseModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>✏️ Edit Expense</h3>
+          <button type="button" class="btn-close-modal" onclick="closeModal('editExpenseModal')">✕</button>
+        </div>
+        <form id="editExpenseForm" method="post" class="fintech-form">
+          <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label>Description</label>
+            <input class="form-control" name="title" id="editExpenseTitle" required maxlength="90">
+          </div>
+          <div class="form-row" style="margin-bottom: 12px;">
+            <div class="form-group">
+              <label>Amount</label>
+              <input class="form-control num" name="amount" id="editExpenseAmount" type="number" step="0.01" min="0.01" required>
+            </div>
+            <div class="form-group">
+              <label>Category</label>
+              <select class="form-control" name="category" id="editExpenseCategory">
+                <option value="Food">Food & Dining</option>
+                <option value="Bills">Bills & Utilities</option>
+                <option value="Shopping">Shopping</option>
+                <option value="Travel">Travel & Commute</option>
+                <option value="Education">Education & Books</option>
+                <option value="Health">Health & Fitness</option>
+                <option value="Entertainment">Entertainment</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label>Date</label>
+            <input class="form-control" name="spentOn" id="editExpenseDate" type="date">
+          </div>
+          <button type="submit" class="btn-primary" style="width: 100%; background: linear-gradient(135deg, #f43f5e, #e11d48);">Save Expense</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Edit Income Modal -->
+    <div id="editIncomeModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>✏️ Edit Income</h3>
+          <button type="button" class="btn-close-modal" onclick="closeModal('editIncomeModal')">✕</button>
+        </div>
+        <form id="editIncomeForm" method="post" class="fintech-form">
+          <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label>Source / Description</label>
+            <input class="form-control" name="title" id="editIncomeTitle" required maxlength="90">
+          </div>
+          <div class="form-row" style="margin-bottom: 12px;">
+            <div class="form-group">
+              <label>Amount</label>
+              <input class="form-control num" name="amount" id="editIncomeAmount" type="number" step="0.01" min="0.01" required>
+            </div>
+            <div class="form-group">
+              <label>Category</label>
+              <select class="form-control" name="category" id="editIncomeCategory">
+                <option value="Salary">Salary</option>
+                <option value="Freelance">Freelance / Contract</option>
+                <option value="Business">Business Revenue</option>
+                <option value="Investment">Investment & Dividends</option>
+                <option value="Bonus">Bonus & Incentives</option>
+                <option value="Other">Other Income</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label>Date Received</label>
+            <input class="form-control" name="receivedOn" id="editIncomeDate" type="date">
+          </div>
+          <button type="submit" class="btn-primary" style="width: 100%; background: linear-gradient(135deg, #10b981, #059669);">Save Income</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Edit Savings Goal Modal -->
+    <div id="editGoalModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>✏️ Edit Savings Goal</h3>
+          <button type="button" class="btn-close-modal" onclick="closeModal('editGoalModal')">✕</button>
+        </div>
+        <form id="editGoalForm" method="post" class="fintech-form">
+          <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label>Goal Name</label>
+            <input class="form-control" name="title" id="editGoalTitle" required maxlength="80">
+          </div>
+          <div class="form-row" style="margin-bottom: 12px;">
+            <div class="form-group">
+              <label>Target Amount</label>
+              <input class="form-control num" name="targetAmount" id="editGoalTarget" type="number" step="100" min="1" required>
+            </div>
+            <div class="form-group">
+              <label>Category</label>
+              <select class="form-control" name="category" id="editGoalCategory">
+                <option value="Emergency Fund">Emergency Fund</option>
+                <option value="Travel">Travel & Adventure</option>
+                <option value="Gadgets">Gadgets & Tech</option>
+                <option value="Investment">Investment & Real Estate</option>
+                <option value="Education">Education & Courses</option>
+                <option value="Other">Other Milestone</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label>Target Date</label>
+            <input class="form-control" name="targetDate" id="editGoalDate" type="date">
+          </div>
+          <button type="submit" class="btn-primary" style="width: 100%;">Save Vault</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <footer style="text-align: center; color: var(--text-dim); font-size: 13px; margin-top: 40px;">
+      LIFEPOINT — Consistency compounds into freedom.
+    </footer>
+  </div>
+
+  <!-- Interactive Scripts & Charts -->
+  <script th:inline="javascript">
+    /*<![CDATA[*/
+    const userEmail = /*[[${profile.email}]]*/ 'demo@lifepoint.local';
+    const currencySymbol = /*[[${currencySymbol}]]*/ '₹';
+    const categoryLabels = /*[[${categoryLabelsJson}]]*/ '[]';
+    const categoryValues = /*[[${categoryValuesJson}]]*/ '[]';
+    const cashflowMonths = /*[[${cashflowMonthsJson}]]*/ '[]';
+    const cashflowIncome = /*[[${cashflowIncomeJson}]]*/ '[]';
+    const cashflowExpense = /*[[${cashflowExpenseJson}]]*/ '[]';
+    const habitLabels = /*[[${habitLabelsJson}]]*/ '[]';
+    const habitCounts = /*[[${habitCountsJson}]]*/ '[]';
+    const trendDays = /*[[${trendDaysJson}]]*/ '[]';
+    const trendSavings = /*[[${trendSavingsJson}]]*/ '[]';
+
+    let cashflowChartInstance = null;
+    let categoryChartInstance = null;
+    let habitTrendsChartInstance = null;
+    let cumulativeSavingsChartInstance = null;
+    let stompClient = null;
+
+    function getCsrfToken() {
+      const meta = document.querySelector('meta[name="_csrf"]');
+      return meta ? meta.getAttribute('content') : '';
+    }
+
+    function getCsrfHeader() {
+      const meta = document.querySelector('meta[name="_csrf_header"]');
+      return meta ? meta.getAttribute('content') : 'X-CSRF-TOKEN';
+    }
+
+    function showToast(message, icon = '✨') {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const toast = document.createElement('div');
+      toast.className = 'toast-item';
+      toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.transition = 'opacity 0.3s, transform 0.3s';
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    function initCharts() {
+      try {
+        const catLabels = JSON.parse(categoryLabels || '[]');
+        const catVals = JSON.parse(categoryValues || '[]');
+        const cfMonths = JSON.parse(cashflowMonths || '[]');
+        const cfInc = JSON.parse(cashflowIncome || '[]');
+        const cfExp = JSON.parse(cashflowExpense || '[]');
+        const hbLabels = JSON.parse(habitLabels || '[]');
+        const hbCounts = JSON.parse(habitCounts || '[]');
+        const trDays = JSON.parse(trendDays || '[]');
+        const trSav = JSON.parse(trendSavings || '[]');
+
+        // 1. Cashflow Trajectory Chart
+        const cashflowCtx = document.getElementById('cashflowChart');
+        if (cashflowCtx) {
+          cashflowChartInstance = new Chart(cashflowCtx, {
+            type: 'bar',
+            data: {
+              labels: cfMonths,
+              datasets: [
+                {
+                  label: 'Income',
+                  data: cfInc,
+                  backgroundColor: 'rgba(16, 185, 129, 0.85)',
+                  borderRadius: 6,
+                  borderSkipped: false
+                },
+                {
+                  label: 'Expense',
+                  data: cfExp,
+                  backgroundColor: 'rgba(244, 63, 94, 0.8)',
+                  borderRadius: 6,
+                  borderSkipped: false
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: 'top',
+                  labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', size: 12 } }
+                },
+                tooltip: {
+                  backgroundColor: '#111622',
+                  borderColor: 'rgba(255, 255, 255, 0.1)',
+                  borderWidth: 1,
+                  padding: 12
+                }
+              },
+              scales: {
+                x: {
+                  grid: { display: false },
+                  ticks: { color: '#64748b', font: { family: 'Plus Jakarta Sans', size: 11 } }
+                },
+                y: {
+                  grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                  ticks: { color: '#64748b', font: { family: 'Plus Jakarta Sans', size: 11 } }
+                }
+              }
+            }
+          });
+        }
+
+        // 2. Category Spending Donut Chart
+        const categoryCtx = document.getElementById('categoryChart');
+        if (categoryCtx) {
+          const colors = ['#6366f1', '#10b981', '#f59e0b', '#06b6d4', '#f43f5e', '#a855f7', '#3b82f6', '#ec4899'];
+          categoryChartInstance = new Chart(categoryCtx, {
+            type: 'doughnut',
+            data: {
+              labels: catLabels.length ? catLabels : ['No Expenses Yet'],
+              datasets: [{
+                data: catVals.length ? catVals : [1],
+                backgroundColor: catVals.length ? colors.slice(0, catLabels.length) : ['#272e39'],
+                borderWidth: 2,
+                borderColor: '#111622'
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              cutout: '72%',
+              plugins: {
+                legend: {
+                  position: 'bottom',
+                  labels: { color: '#94a3b8', boxWidth: 12, font: { family: 'Plus Jakarta Sans', size: 11 } }
+                }
+              }
+            }
+          });
+        }
+
+        // 3. 7-Day Habit Activity Chart
+        const habitCtx = document.getElementById('habitTrendsChart');
+        if (habitCtx) {
+          habitTrendsChartInstance = new Chart(habitCtx, {
+            type: 'bar',
+            data: {
+              labels: hbLabels,
+              datasets: [{
+                label: 'Habits Completed',
+                data: hbCounts,
+                backgroundColor: 'rgba(99, 102, 241, 0.85)',
+                borderRadius: 6
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { grid: { display: false }, ticks: { color: '#64748b' } },
+                y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#64748b', stepSize: 1 } }
+              }
+            }
+          });
+        }
+
+        // 4. Cumulative "Saved by Choice" Trajectory Chart
+        const cumCtx = document.getElementById('cumulativeSavingsChart');
+        if (cumCtx) {
+          cumulativeSavingsChartInstance = new Chart(cumCtx, {
+            type: 'line',
+            data: {
+              labels: trDays,
+              datasets: [{
+                label: 'Saved by Choice (' + currencySymbol + ')',
+                data: trSav,
+                borderColor: '#c084fc',
+                backgroundColor: 'rgba(192, 132, 252, 0.12)',
+                fill: true,
+                tension: 0.35,
+                borderWidth: 2.5
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { position: 'top', labels: { color: '#94a3b8' } }
+              },
+              scales: {
+                x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 7 } },
+                y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#64748b' } }
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Error initializing charts:", err);
+      }
+    }
+
+    // --- Real-time WebSocket Connection ---
+    function connectWebSocket() {
+      try {
+        const socket = new SockJS('/ws');
+        stompClient = Stomp.over(socket);
+        stompClient.debug = null; // Quiet in console
+
+        stompClient.connect({}, function (frame) {
+          // Subscribe to private user topic
+          stompClient.subscribe('/topic/dashboard/' + userEmail, function (message) {
+            handleRealtimeEvent(JSON.parse(message.body));
+          });
+          // Subscribe to global topic
+          stompClient.subscribe('/topic/dashboard', function (message) {
+            handleRealtimeEvent(JSON.parse(message.body));
+          });
+        }, function (error) {
+          console.log("WebSocket connection gracefully deferred.");
+        });
+      } catch (e) {
+        console.log("SockJS/Stomp not available, falling back to local updates.");
+      }
+    }
+
+    function handleRealtimeEvent(event) {
+      if (!event) return;
+      if (event.type === 'ACHIEVEMENT_UNLOCKED') {
+        showToast("🏆 Achievement Unlocked: " + (event.payload.title || 'Badge Earned!'), '🏆');
+      }
+      refreshDashboardMetrics();
+    }
+
+    // --- Dynamic Real-time Metrics Refresh via REST API ---
+    async function refreshDashboardMetrics() {
+      try {
+        const res = await fetch('/api/dashboard/summary');
+        if (!res.ok) return;
+        const result = await res.json();
+        if (!result.success || !result.data) return;
+
+        const data = result.data;
+
+        // Update Gamification
+        if (data.profile) {
+          const lvl = document.getElementById('navLevelTag');
+          if (lvl) lvl.textContent = 'LEVEL ' + data.profile.level;
+          const xp = document.getElementById('navXpText');
+          if (xp) xp.textContent = data.profile.xp + ' XP';
+          const fill = document.getElementById('navXpBarFill');
+          if (fill) fill.style.width = data.profile.levelProgressPercent + '%';
+        }
+
+        // Update Metric Cards
+        const netCash = document.getElementById('metricNetCashflow');
+        if (netCash) netCash.textContent = Number(data.netCashflow).toFixed(2);
+        const inc = document.getElementById('metricTotalIncome');
+        if (inc) inc.textContent = data.currencySymbol + ' ' + Math.round(data.totalIncome);
+        const exp = document.getElementById('metricTotalExpense');
+        if (exp) exp.textContent = data.currencySymbol + ' ' + Math.round(data.totalExpense);
+
+        const savedByHabits = document.getElementById('metricSavedByHabits');
+        if (savedByHabits) savedByHabits.textContent = Number(data.totalSavedByHabits).toFixed(2);
+
+        const habitCounts = document.getElementById('metricHabitCounts');
+        if (habitCounts) habitCounts.textContent = data.doneHabitsCount + ' / ' + data.habitCount;
+        const habitRate = document.getElementById('metricHabitRate');
+        if (habitRate) habitRate.textContent = data.habitCompletionRate + '% Today';
+        const maxStr = document.getElementById('metricMaxStreak');
+        if (maxStr) maxStr.textContent = '🔥 ' + data.maxStreak + 'd Streak';
+
+        const savedGoals = document.getElementById('metricSavedInGoals');
+        if (savedGoals) savedGoals.textContent = Math.round(data.totalSavedInGoals);
+        const goalsProg = document.getElementById('metricGoalsProgress');
+        if (goalsProg) goalsProg.textContent = data.goalsOverallProgress + '% Target';
+        const activeVaults = document.getElementById('metricActiveVaultsCount');
+        if (activeVaults && data.goals) activeVaults.textContent = data.goals.length + ' Active Vaults';
+
+        // Refresh Chart.js data
+        refreshChartsData();
+      } catch (err) {
+        console.error("Error refreshing dashboard:", err);
+      }
+    }
+
+    async function refreshChartsData() {
+      try {
+        const res = await fetch('/api/dashboard/analytics');
+        if (!res.ok) return;
+        const result = await res.json();
+        if (!result.success || !result.data) return;
+        const an = result.data;
+
+        if (cashflowChartInstance && an.cashflowMonths) {
+          cashflowChartInstance.data.labels = an.cashflowMonths;
+          cashflowChartInstance.data.datasets[0].data = an.cashflowIncome;
+          cashflowChartInstance.data.datasets[1].data = an.cashflowExpense;
+          cashflowChartInstance.update();
+        }
+
+        if (categoryChartInstance && an.categoryLabels) {
+          categoryChartInstance.data.labels = an.categoryLabels.length ? an.categoryLabels : ['No Expenses Yet'];
+          categoryChartInstance.data.datasets[0].data = an.categoryValues.length ? an.categoryValues : [1];
+          categoryChartInstance.update();
+        }
+
+        if (habitTrendsChartInstance && an.habitLabels) {
+          habitTrendsChartInstance.data.labels = an.habitLabels;
+          habitTrendsChartInstance.data.datasets[0].data = an.habitCounts;
+          habitTrendsChartInstance.update();
+        }
+
+        if (cumulativeSavingsChartInstance && an.trendDays) {
+          cumulativeSavingsChartInstance.data.labels = an.trendDays;
+          cumulativeSavingsChartInstance.data.datasets[0].data = an.trendSavings;
+          cumulativeSavingsChartInstance.update();
+        }
+      } catch (e) {
+        console.error("Error updating charts:", e);
+      }
+    }
+
+    // --- AJAX Habit Completion ---
+    async function completeHabitAjax(event, habitId) {
+      if (event) event.preventDefault();
+      try {
+        const res = await fetch('/api/habits/' + habitId + '/complete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            [getCsrfHeader()]: getCsrfToken()
+          }
+        });
+        const json = await res.json();
+        if (json.success) {
+          showToast(json.message || "Habit completed! Streak extended and XP earned!", '🔥');
+          // Update item in DOM
+          const item = document.getElementById('habit-item-' + habitId);
+          if (item) {
+            item.classList.add('is-done');
+            const actions = item.querySelector('.habit-actions');
+            if (actions) {
+              const markBtn = actions.querySelector('form');
+              if (markBtn) markBtn.remove();
+              const badge = document.createElement('div');
+              badge.className = 'btn-completed-badge';
+              badge.innerHTML = '<span>✓</span> Done Today';
+              actions.prepend(badge);
+            }
+          }
+          refreshDashboardMetrics();
+        } else {
+          showToast(json.message || "Could not complete habit", '⚠️');
+        }
+      } catch (err) {
+        // Fallback to normal form submit
+        const form = event ? event.target : null;
+        if (form) form.submit();
+      }
+    }
+
+    // --- Filter & Search Transactions ---
+    function filterTransactions() {
+      const search = (document.getElementById('txSearchInput').value || '').toLowerCase().trim();
+      const cat = document.getElementById('txCategoryFilter').value;
+      const type = document.getElementById('txTypeFilter').value;
+
+      const items = document.querySelectorAll('.tx-item');
+      items.forEach(el => {
+        const itemType = el.getAttribute('data-type');
+        const itemCat = el.getAttribute('data-category');
+        const itemTitle = (el.getAttribute('data-title') || '').toLowerCase();
+
+        let matchSearch = !search || itemTitle.includes(search);
+        let matchCat = !cat || itemCat === cat;
+        let matchType = type === 'ALL' || itemType === type;
+
+        if (matchSearch && matchCat && matchType) {
+          el.style.display = 'flex';
+        } else {
+          el.style.display = 'none';
+        }
+      });
+    }
+
+    // --- Tab Navigation Switcher ---
+    function switchSection(section) {
+      const tabs = document.querySelectorAll('.nav-tab-item');
+      tabs.forEach(t => t.classList.remove('active'));
+      const activeBtn = event ? event.target.closest('.nav-tab-item') : null;
+      if (activeBtn) activeBtn.classList.add('active');
+
+      const overviewCharts = document.getElementById('analyticsOverviewSection');
+      const extraCharts = document.getElementById('extraChartsSection');
+      const colLeft = document.querySelector('.col-left');
+      const colRight = document.querySelector('.col-right');
+
+      const panelHabits = document.getElementById('panelHabits');
+      const panelCashflow = document.getElementById('panelCashflow');
+      const panelBudgets = document.getElementById('panelBudgets');
+      const panelGoals = document.getElementById('panelGoals');
+      const panelAchievements = document.getElementById('panelAchievements');
+      const panelLeaderboard = document.getElementById('panelLeaderboard');
+
+      // Reset all to visible first
+      [overviewCharts, extraCharts, colLeft, colRight, panelHabits, panelCashflow, panelBudgets, panelGoals, panelAchievements, panelLeaderboard]
+        .forEach(el => { if (el) el.style.display = ''; });
+
+      if (section === 'overview') {
+        extraCharts.style.display = 'none';
+      } else if (section === 'habits') {
+        overviewCharts.style.display = 'none';
+        extraCharts.style.display = 'none';
+        panelCashflow.style.display = 'none';
+        colRight.style.display = 'none';
+      } else if (section === 'cashflow') {
+        overviewCharts.style.display = 'none';
+        extraCharts.style.display = 'none';
+        panelHabits.style.display = 'none';
+        colRight.style.display = 'none';
+      } else if (section === 'budgets') {
+        overviewCharts.style.display = 'none';
+        extraCharts.style.display = 'none';
+        colLeft.style.display = 'none';
+        panelGoals.style.display = 'none';
+        panelAchievements.style.display = 'none';
+        panelLeaderboard.style.display = 'none';
+      } else if (section === 'goals') {
+        overviewCharts.style.display = 'none';
+        extraCharts.style.display = 'none';
+        colLeft.style.display = 'none';
+        panelBudgets.style.display = 'none';
+        panelAchievements.style.display = 'none';
+        panelLeaderboard.style.display = 'none';
+      } else if (section === 'analytics') {
+        overviewCharts.style.display = 'grid';
+        extraCharts.style.display = 'grid';
+        colLeft.style.display = 'none';
+        colRight.style.display = 'none';
+      } else if (section === 'leaderboard') {
+        overviewCharts.style.display = 'none';
+        extraCharts.style.display = 'none';
+        colLeft.style.display = 'none';
+        panelBudgets.style.display = 'none';
+        panelGoals.style.display = 'none';
+        panelAchievements.style.display = 'block';
+        panelLeaderboard.style.display = 'block';
+      }
+    }
+
+    // --- Modal Handlers ---
+    function openModal(id) {
+      const modal = document.getElementById(id);
+      if (modal) modal.style.display = 'flex';
+    }
+
+    function closeModal(id) {
+      const modal = document.getElementById(id);
+      if (modal) modal.style.display = 'none';
+    }
+
+    function openEditHabitModal(btn) {
+      const id = btn.getAttribute('data-id');
+      const title = btn.getAttribute('data-title');
+      const cat = btn.getAttribute('data-category');
+      const moneySaver = btn.getAttribute('data-moneysaver') === 'true';
+      const savedAmount = btn.getAttribute('data-savedamount');
+      const goalId = btn.getAttribute('data-goalid');
+
+      document.getElementById('editHabitForm').action = '/habits/' + id + '/edit';
+      document.getElementById('editHabitTitle').value = title || '';
+      document.getElementById('editHabitCategory').value = cat || 'Personal';
+      document.getElementById('editMoneySaverToggle').checked = moneySaver;
+      document.getElementById('editHabitSavedAmount').value = savedAmount || '0';
+      document.getElementById('editHabitLinkedGoal').value = goalId || '';
+
+      toggleEditMoneySaver();
+      openModal('editHabitModal');
+    }
+
+    function toggleEditMoneySaver() {
+      const chk = document.getElementById('editMoneySaverToggle');
+      const fields = document.getElementById('editMoneySaverFields');
+      if (chk && fields) {
+        fields.style.display = chk.checked ? 'grid' : 'none';
+      }
+    }
+
+    function openEditExpenseModal(btn) {
+      const id = btn.getAttribute('data-id');
+      const title = btn.getAttribute('data-title');
+      const cat = btn.getAttribute('data-category');
+      const amount = btn.getAttribute('data-amount');
+      const date = btn.getAttribute('data-date');
+
+      document.getElementById('editExpenseForm').action = '/expenses/' + id + '/edit';
+      document.getElementById('editExpenseTitle').value = title || '';
+      document.getElementById('editExpenseCategory').value = cat || 'Food';
+      document.getElementById('editExpenseAmount').value = amount || '';
+      document.getElementById('editExpenseDate').value = date || '';
+
+      openModal('editExpenseModal');
+    }
+
+    function openEditIncomeModal(btn) {
+      const id = btn.getAttribute('data-id');
+      const title = btn.getAttribute('data-title');
+      const cat = btn.getAttribute('data-category');
+      const amount = btn.getAttribute('data-amount');
+      const date = btn.getAttribute('data-date');
+
+      document.getElementById('editIncomeForm').action = '/income/' + id + '/edit';
+      document.getElementById('editIncomeTitle').value = title || '';
+      document.getElementById('editIncomeCategory').value = cat || 'Salary';
+      document.getElementById('editIncomeAmount').value = amount || '';
+      document.getElementById('editIncomeDate').value = date || '';
+
+      openModal('editIncomeModal');
+    }
+
+    function openEditGoalModal(btn) {
+      const id = btn.getAttribute('data-id');
+      const title = btn.getAttribute('data-title');
+      const target = btn.getAttribute('data-target');
+      const date = btn.getAttribute('data-date');
+      const cat = btn.getAttribute('data-category');
+
+      document.getElementById('editGoalForm').action = '/goals/' + id + '/edit';
+      document.getElementById('editGoalTitle').value = title || '';
+      document.getElementById('editGoalTarget').value = target || '';
+      document.getElementById('editGoalDate').value = date || '';
+      document.getElementById('editGoalCategory').value = cat || 'General';
+
+      openModal('editGoalModal');
+    }
+
+    function toggleMoneySaverFields() {
+      const toggle = document.getElementById('moneySaverToggle');
+      const fields = document.getElementById('moneySaverFields');
+      if (toggle && fields) {
+        fields.style.display = toggle.checked ? 'grid' : 'none';
+      }
+    }
+
+    function switchTxTab(type) {
+      const expenseForm = document.getElementById('expenseForm');
+      const incomeForm = document.getElementById('incomeForm');
+      const expenseBtn = document.getElementById('tabExpenseBtn');
+      const incomeBtn = document.getElementById('tabIncomeBtn');
+
+      if (type === 'income') {
+        expenseForm.style.display = 'none';
+        incomeForm.style.display = 'grid';
+        expenseBtn.classList.remove('active');
+        incomeBtn.classList.add('active');
+      } else {
+        incomeForm.style.display = 'none';
+        expenseForm.style.display = 'grid';
+        incomeBtn.classList.remove('active');
+        expenseBtn.classList.add('active');
+      }
+    }
+
+    window.onclick = function(e) {
+      if (e.target.classList.contains('modal-backdrop')) {
+        e.target.style.display = 'none';
+      }
+    };
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-backdrop').forEach(m => m.style.display = 'none');
+      }
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+      initCharts();
+      connectWebSocket();
+    });
+    /*]]>*/
+  </script>
+</body>
+</html>

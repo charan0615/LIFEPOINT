@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LIFEPOINT — Personal Growth & Wealth Operating System</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <header class="navbar">
+      <div class="brand">
+        <div class="brand-icon">L</div>
+        <span>LIFEPOINT</span>
+      </div>
+      <div class="nav-actions">
+        <button type="button" onclick="openLoginModal()" class="btn-signout" style="border-color: rgba(99, 102, 241, 0.4); color: #a5b4fc;">
+          ⚡ Quick Access / Faculty Login
+        </button>
+        <a href="/oauth2/authorization/google" class="btn-primary" style="padding: 8px 18px; font-size: 13px;">
+          <span>Sign In with Google</span>
+          <span th:if="${!googleOAuthConfigured}" style="margin-left: 6px; font-size: 10px; background: rgba(245, 158, 11, 0.25); color: #fde047; padding: 2px 6px; border-radius: 4px;">⚠️ Setup</span>
+        </a>
+      </div>
+    </header>
+
+    <div th:if="${oauthError}" class="alert-banner error" style="margin-bottom: 24px; line-height: 1.6;">
+      <span>⚠️</span> <span th:text="${oauthError}">OAuth Error</span>
+    </div>
+
+    <main>
+      <section class="landing-hero">
+        <div class="pill-eyebrow">
+          <span>✨</span> HABITS × FINTECH × COMPOUND DISCIPLINE
+        </div>
+        <h1>
+          Master daily discipline.<br>
+          <span class="gradient-text">Watch your wealth compound.</span>
+        </h1>
+        <p>
+          LIFEPOINT merges behavioral psychology with real-time financial tracking. Maintain daily streaks, earn XP, automate your category budgets, and automatically funnel money saved from positive habits straight into your savings vaults.
+        </p>
+
+        <div class="cta-group">
+          <a class="btn-google" href="/oauth2/authorization/google">
+            <svg width="20" height="20" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.14z"/>
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"/>
+              <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+            </svg>
+            <span>Continue with Google</span>
+            <span th:if="${!googleOAuthConfigured}" class="badge-pill" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; font-size: 10px; margin-left: 6px;">Setup Required</span>
+          </a>
+          <button type="button" class="btn-demo" onclick="openLoginModal()">
+            <span>⚡</span> Explore Live Demo / Faculty Login
+          </button>
+        </div>
+      </section>
+
+      <section class="feature-cards">
+        <article class="feature-card">
+          <div class="feature-icon-box">🔥</div>
+          <h3>Gamified Habit Streaks</h3>
+          <p>Build unshakeable daily consistency. Earn XP, rank up your level, maintain streak flames, and unlock achievement badges as you conquer daily routines.</p>
+        </article>
+
+        <article class="feature-card">
+          <div class="feature-icon-box">💎</div>
+          <h3>"Saved by Choice" Linkage</h3>
+          <p>Every bad financial habit you skip (takeout, cabs, impulse buys) puts actual money back into your life. Link habits directly to your savings vaults and auto-deposit on completion.</p>
+        </article>
+
+        <article class="feature-card">
+          <div class="feature-icon-box">📊</div>
+          <h3>Multi-Currency Budgets</h3>
+          <p>Track cashflow across 9 global currencies with dynamic health alerts (Safe, 80% Warning, Over-Limit Danger), and visualize 6-month trajectory with real-time Chart.js charts.</p>
+        </article>
+      </section>
+    </main>
+
+    <!-- Quick Access / Custom Account Modal -->
+    <div id="quickLoginModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>⚡ Instant Access & Demo Evaluation</h3>
+          <button type="button" class="btn-close-modal" onclick="closeLoginModal()">✕</button>
+        </div>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 18px;">
+          Sign in instantly with any test account or faculty review profile. Each account maintains 100% strict data isolation in the database.
+        </p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+          <form th:action="@{/auth/quick-login}" method="post">
+            <input type="hidden" name="email" value="faculty@lifepoint.edu">
+            <input type="hidden" name="name" value="Prof. Davis (Faculty Reviewer)">
+            <button type="submit" class="btn-demo" style="width: 100%; justify-content: center; padding: 10px;">
+              🎓 Faculty Reviewer
+            </button>
+          </form>
+          <a href="/demo" class="btn-demo" style="width: 100%; justify-content: center; padding: 10px; text-decoration: none;">
+            🚀 Preloaded Demo
+          </a>
+        </div>
+
+        <div style="text-align: center; color: var(--text-dim); font-size: 12px; margin-bottom: 14px; position: relative;">
+          <span>— OR ENTER CUSTOM ACCOUNT —</span>
+        </div>
+
+        <form th:action="@{/auth/quick-login}" method="post" class="fintech-form">
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label>Full Name</label>
+            <input class="form-control" name="name" placeholder="e.g. Alex Rivera" required>
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label>Email Address</label>
+            <input class="form-control" name="email" type="email" placeholder="e.g. alex@example.com" required>
+          </div>
+          <button type="submit" class="btn-primary" style="width: 100%;">
+            Sign In to LIFEPOINT →
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <footer style="text-align: center; color: var(--text-dim); font-size: 13px; margin-top: 60px;">
+      LIFEPOINT — Built for mindful discipline and financial compound growth.
+    </footer>
+  </div>
+
+  <script>
+    function openLoginModal() {
+      document.getElementById('quickLoginModal').style.display = 'flex';
+    }
+    function closeLoginModal() {
+      document.getElementById('quickLoginModal').style.display = 'none';
+    }
+    window.onclick = function(event) {
+      const modal = document.getElementById('quickLoginModal');
+      if (event.target === modal) {
+        modal.style.display = 'none';
+      }
+    };
+  </script>
+</body>
+</html>
